@@ -129,20 +129,20 @@ script.on_nth_tick(
 
 
         if inventory then
-          for item, count in pairs(
+          for _, item in pairs(
             inventory.get_contents()
           ) do
             local removed =
                 inventory.remove({
-                  name = item,
-                  count = count
+                  name = item.name,
+                  count = item.count
                 })
 
 
             if removed > 0 then
               Research.add_progress(
                 chest.force,
-                item,
+                item.name,
                 removed
               )
             end
