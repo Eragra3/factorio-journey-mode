@@ -24,10 +24,18 @@ function Research.get_required_count(item_name)
   )
 end
 
-function Research.is_unlocked(force, recipe_name)
-  local recipe = force.recipes["journey-free-" .. recipe_name]
+function Research.is_unlocked(force, item)
+  for name, recipe in pairs(force.recipes) do
+    if string.sub(name, 1, 13) == "journey-free-" then
+      for _, product in pairs(recipe.products) do
+        if product.name == item then
+          return recipe.enabled
+        end
+      end
+    end
+  end
 
-  return recipe and recipe.enabled
+  return false
 end
 
 function Research.get_force_data(force)
@@ -46,16 +54,17 @@ function Research.get_force_data(force)
 end
 
 function Research.unlock_item(force, item)
-  local recipe_name =
-      "journey-free-" .. item
-
-
-  local recipe =
-      force.recipes[recipe_name]
-
-
-  if recipe then
-    recipe.enabled = true
+  for name, recipe in pairs(force.recipes) do
+    if not recipe.enabled
+        and string.sub(name, 1, 13) == "journey-free-"
+    then
+      for _, product in pairs(recipe.products) do
+        if product.name == item then
+          recipe.enabled = true
+          break
+        end
+      end
+    end
   end
 
 
@@ -94,21 +103,6 @@ function Research.add_progress(force, item, amount)
       .. item
       .. " unlocked"
     )
-  end
-
-
-  if chest and chest.valid then
-    local inventory =
-        chest.get_inventory(
-          defines.inventory.chest
-        )
-
-    if inventory then
-      inventory.remove({
-        name = item,
-        count = added
-      })
-    end
   end
 end
 

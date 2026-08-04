@@ -46,6 +46,54 @@ commands.add_command(
 )
 
 
+commands.add_command(
+  "journey_recheck",
+  "Re-check research progress and unlock anything past threshold",
+  function(command)
+    local player =
+        game.get_player(command.player_index)
+
+    if not player then
+      return
+    end
+
+
+    local data =
+        Research.get_force_data(player.force)
+
+
+    local unlocked_count = 0
+
+    for item, progress in pairs(data.progress) do
+      if not Research.is_unlocked(player.force, item) then
+        local required =
+            Research.get_required_count(item)
+
+
+        if progress >= required then
+          Research.unlock_item(player.force, item)
+
+          unlocked_count = unlocked_count + 1
+
+          game.print(
+            "[Journey] "
+            .. item
+            .. " unlocked"
+          )
+        end
+      end
+    end
+
+
+    player.print(
+      "Journey recheck complete. Unlocked "
+      .. unlocked_count
+      .. " item(s)."
+    )
+  end
+)
+
+
 -- Chest handler
 
 

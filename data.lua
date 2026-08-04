@@ -52,22 +52,80 @@ data:extend { researchChest, researchChestItem, researchChestItemRecipe }
 
 -- FREE RECIPIES
 
-script.on_init(function()
-  for name, recipe in pairs(data.raw.recipe) do
-    local free_recipe = table.deepcopy(recipe)
+local FREE_RECIPE_TINT = { r = 0, g = 1, b = 1, a = 0.6 }
 
-    free_recipe.name =
-        "journey-free-" .. name
-
-    free_recipe.ingredients = {}
-    free_recipe.enabled = false
-    free_recipe.localised_name = "Free " .. free_recipe.localised_name
-
-    data:extend({
-      free_recipe
-    })
+local function get_recipe_icons(recipe)
+  if recipe.icons then
+    return table.deepcopy(recipe.icons)
   end
-end)
 
+  if recipe.icon then
+    return {
+      { icon = recipe.icon, icon_size = recipe.icon_size or 64 }
+    }
+  end
 
+  -- No icon on the recipe itself: fall back to its main result's icon,
+  -- same as the game does by default when a recipe has none.
+  local results =
+      recipe.results
+      or (recipe.normal and recipe.normal.results)
 
+  local result = results and results[1]
+
+  if not result then
+    return nil
+  end
+
+  local result_type = result.type or "item"
+  local proto = data.raw[result_type] and data.raw[result_type][result.name]
+
+  if not proto then
+    return nil
+  end
+
+  if proto.icons then
+    return table.deepcopy(proto.icons)
+  elseif proto.icon then
+    return {
+      { icon = proto.icon, icon_size = proto.icon_size or 64 }
+    }
+  end
+
+  return nil
+end
+
+local recipe_names = {}
+
+for name in pairs(data.raw.recipe) do
+  table.insert(recipe_names, name)
+end
+
+for _, name in pairs(recipe_names) do
+  local recipe = data.raw.recipe[name]
+  local free_recipe = table.deepcopy(recipe)
+
+  free_recipe.name =
+      "journey-free-" .. name
+
+  free_recipe.ingredients = {}
+  free_recipe.enabled = false
+  free_recipe.localised_name =
+      { "", "Free ", free_recipe.localised_name or name }
+
+  local icons = get_recipe_icons(recipe)
+
+  if icons then
+    for _, layer in pairs(icons) do
+      layer.tint = FREE_RECIPE_TINT
+    end
+
+    free_recipe.icons = icons
+    free_recipe.icon = nil
+    free_recipe.icon_size = nil
+  end
+
+  data:extend({
+    free_recipe
+  })
+end
