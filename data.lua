@@ -49,3 +49,25 @@ local researchChestItemRecipe = {
 }
 
 data:extend { researchChest, researchChestItem, researchChestItemRecipe }
+
+-- FREE RECIPIES
+
+script.on_init(function()
+  for name, recipe in pairs(data.raw.recipe) do
+    local free_recipe = table.deepcopy(recipe)
+
+    free_recipe.name =
+        "journey-free-" .. name
+
+    free_recipe.ingredients = {}
+    free_recipe.enabled = false
+    free_recipe.localised_name = "Free " .. free_recipe.localised_name
+
+    data:extend({
+      free_recipe
+    })
+  end
+end)
+
+
+
