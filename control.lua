@@ -249,13 +249,14 @@ local function update_journey_item_row(row, force, item, progress)
       Research.is_unlocked(force, item)
 
   local details = row.journey_item_details
+  local title_row = details.journey_item_title_row
   local progress_row = details.journey_progress_row
   local progress_bar = progress_row.journey_progress_bar
 
-  details.journey_item_name.caption =
+  title_row.journey_item_name.caption =
       get_journey_item_caption(item)
 
-  details.journey_item_status.caption =
+  title_row.journey_item_status.caption =
       researched and "Researched" or ""
 
   progress_bar.value = displayed_progress / required
@@ -328,6 +329,7 @@ local function add_journey_item_row(scroll, force, item, progress, researched)
   local title_row =
       details.add({
         type = "flow",
+        name = "journey_item_title_row",
         direction = "horizontal"
       })
 
