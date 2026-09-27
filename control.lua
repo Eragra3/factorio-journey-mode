@@ -163,19 +163,21 @@ script.on_nth_tick(
           for _, item in pairs(
             inventory.get_contents()
           ) do
-            local removed =
-                inventory.remove({
-                  name = item.name,
-                  count = item.count
-                })
+            if not Research.is_unlocked(chest.force, item.name) then
+              local removed =
+                  inventory.remove({
+                    name = item.name,
+                    count = item.count
+                  })
 
 
-            if removed > 0 then
-              Research.add_progress(
-                chest.force,
-                item.name,
-                removed
-              )
+              if removed > 0 then
+                Research.add_progress(
+                  chest.force,
+                  item.name,
+                  removed
+                )
+              end
             end
           end
         end

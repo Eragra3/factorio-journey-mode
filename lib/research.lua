@@ -86,13 +86,16 @@ function Research.add_progress(force, item, amount)
   end
 
 
-  data.progress[item] =
-      (data.progress[item] or 0)
-      + amount
-
-
   local required =
       Research.get_required_count(item)
+
+
+  data.progress[item] =
+      math.min(
+        (data.progress[item] or 0)
+        + amount,
+        required
+      )
 
 
   if data.progress[item] >= required then
