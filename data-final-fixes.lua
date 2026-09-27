@@ -82,6 +82,7 @@ end
 --------------------------------------------------
 
 local items_with_free_recipes = {}
+local fluids_with_free_recipes = {}
 
 local function mark_free_recipe_products(recipe)
   local result_sets = {
@@ -92,8 +93,12 @@ local function mark_free_recipe_products(recipe)
 
   for _, results in pairs(result_sets) do
     for _, result in pairs(results or {}) do
-      if (result.type or "item") == "item" then
+      local product_type = result.type or "item"
+
+      if product_type == "item" then
         items_with_free_recipes[result.name] = true
+      elseif product_type == "fluid" then
+        fluids_with_free_recipes[result.name] = true
       end
     end
   end
@@ -171,6 +176,69 @@ for item_name, item in pairs(data.raw.item) do
 
     data:extend({ free_recipe })
     items_with_free_recipes[item_name] = true
+  end
+end
+
+
+--------------------------------------------------
+-- Give fluids without recipes a free refinery recipe
+--------------------------------------------------
+
+for fluid_name, fluid in pairs(data.raw.fluid) do
+  if not fluids_with_free_recipes[fluid_name] then
+    local recipe_name = "journey-free-fluid-" .. fluid_name
+
+    while data.raw.recipe[recipe_name] do
+      recipe_name = recipe_name .. "-fallback"
+    end
+
+
+    local free_recipe = {
+      type = "recipe",
+      name = recipe_name,
+      category = "oil-processing",
+      subgroup = "fluid-recipes",
+      order = "0[free-fluid]-" .. (fluid.order or fluid_name),
+      enabled = false,
+      energy_required = 1,
+      allow_as_intermediate = true,
+      ingredients = {},
+      results = {
+        { type = "fluid", name = fluid_name, amount = 100 }
+      },
+      localised_name = {
+        "",
+        "Free ",
+        fluid.localised_name or fluid_name
+      }
+    }
+
+
+    local icons = nil
+
+    if fluid.icons then
+      icons = table.deepcopy(fluid.icons)
+    elseif fluid.icon then
+      icons = {
+        {
+          icon = fluid.icon,
+          icon_size = fluid.icon_size or 64
+        }
+      }
+    end
+
+
+    if icons then
+      for _, layer in pairs(icons) do
+        layer.tint = { r = 0, g = 1, b = 1, a = 0.6 }
+      end
+
+      free_recipe.icons = icons
+    end
+
+
+    data:extend({ free_recipe })
+    fluids_with_free_recipes[fluid_name] = true
   end
 end
 
