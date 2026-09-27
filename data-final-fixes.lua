@@ -5,6 +5,30 @@ local recipes_by_result = {}
 
 
 --------------------------------------------------
+-- Keep ingredient-free recipes out of furnaces
+--------------------------------------------------
+
+local furnace_categories = {}
+
+for _, furnace in pairs(data.raw.furnace or {}) do
+  for _, category in pairs(furnace.crafting_categories or {}) do
+    furnace_categories[category] = true
+  end
+end
+
+
+for name, recipe in pairs(data.raw.recipe) do
+  if string.sub(name, 1, 13) == "journey-free-"
+      and furnace_categories[recipe.category]
+  then
+    -- Furnaces select recipes from their ingredients. The free clone has no
+    -- ingredients, so leave the original recipe available for normal smelting.
+    recipe.category = "crafting"
+  end
+end
+
+
+--------------------------------------------------
 -- Build recipe index
 --------------------------------------------------
 
