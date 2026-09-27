@@ -239,6 +239,76 @@ local function get_journey_item_caption(item)
 end
 
 
+local function get_journey_item_group(item)
+  local found_group, group = pcall(function()
+    local prototype = prototypes.item[item]
+    local item_group = prototype and prototype.group
+
+    if item_group then
+      return {
+        name = item_group.name,
+        caption = item_group.localised_name or item_group.name,
+        order = item_group.order or item_group.name
+      }
+    end
+  end)
+
+  if found_group and group then
+    return group
+  end
+
+  return {
+    name = "other",
+    caption = "Other",
+    order = "zzzz"
+  }
+end
+
+
+local function get_journey_category_container_name(group_name, researched)
+  local section =
+      researched and "journey_researched_category_"
+      or "journey_progress_category_"
+
+  return section .. group_name
+end
+
+
+local function get_journey_category_groups(items)
+  local groups_by_name = {}
+  local groups = {}
+
+  for _, item in ipairs(items) do
+    local item_group = get_journey_item_group(item)
+    local group = groups_by_name[item_group.name]
+
+    if not group then
+      group = {
+        name = item_group.name,
+        caption = item_group.caption,
+        order = item_group.order,
+        items = {}
+      }
+
+      groups_by_name[group.name] = group
+      table.insert(groups, group)
+    end
+
+    table.insert(group.items, item)
+  end
+
+  table.sort(groups, function(left, right)
+    if left.order == right.order then
+      return left.name < right.name
+    end
+
+    return left.order < right.order
+  end)
+
+  return groups
+end
+
+
 local function update_journey_item_row(row, force, item, progress)
   local required =
       Research.get_required_count(item)
@@ -380,6 +450,60 @@ local function add_journey_item_row(scroll, force, item, progress, researched)
 end
 
 
+local function add_journey_category_groups(
+    scroll,
+    groups,
+    force,
+    progress,
+    researched,
+    empty_message_name,
+    empty_message
+  )
+  if #groups == 0 then
+    scroll.add({
+      type = "label",
+      name = empty_message_name,
+      caption = empty_message
+    })
+
+    return
+  end
+
+
+  for _, group in ipairs(groups) do
+    local category =
+        scroll.add({
+          type = "flow",
+          name = get_journey_category_container_name(
+            group.name,
+            researched
+          ),
+          direction = "vertical"
+        })
+
+    category.style.vertical_spacing = 4
+
+
+    category.add({
+      type = "label",
+      name = "journey_category_header",
+      caption = group.caption
+    })
+
+
+    for _, item in ipairs(group.items) do
+      add_journey_item_row(
+        category,
+        force,
+        item,
+        progress[item],
+        researched
+      )
+    end
+  end
+end
+
+
 local function update_journey_gui(player)
   local window = player.gui.screen.journey_window
 
@@ -412,19 +536,48 @@ local function update_journey_gui(player)
   end
 
 
+  local in_progress_groups =
+      get_journey_category_groups(in_progress_items)
+  local researched_groups =
+      get_journey_category_groups(researched_items)
+
+
   local rebuild =
       not scroll.journey_in_progress_header
       or not scroll.journey_section_divider
       or not scroll.journey_researched_header
+      or (#in_progress_groups == 0 and not scroll.journey_no_in_progress)
+      or (#researched_groups == 0 and not scroll.journey_no_researched)
 
-  for _, item in ipairs(items) do
-    local researched =
-        Research.is_unlocked(player.force, item)
+  local function has_category_rows(groups, researched)
+    for _, group in ipairs(groups) do
+      local category =
+          scroll[get_journey_category_container_name(
+            group.name,
+            researched
+          )]
 
-    if not scroll[get_journey_row_name(item, researched)] then
-      rebuild = true
-      break
+      if not category then
+        return false
+      end
+
+
+      for _, item in ipairs(group.items) do
+        if not category[get_journey_row_name(item, researched)] then
+          return false
+        end
+      end
     end
+
+
+    return true
+  end
+
+
+  if not has_category_rows(in_progress_groups, false)
+      or not has_category_rows(researched_groups, true)
+  then
+    rebuild = true
   end
 
 
@@ -437,23 +590,15 @@ local function update_journey_gui(player)
       caption = "In Progress"
     })
 
-    if #in_progress_items == 0 then
-      scroll.add({
-        type = "label",
-        name = "journey_no_in_progress",
-        caption = "No items in progress."
-      })
-    else
-      for _, item in ipairs(in_progress_items) do
-        add_journey_item_row(
-          scroll,
-          player.force,
-          item,
-          data.progress[item],
-          false
-        )
-      end
-    end
+    add_journey_category_groups(
+      scroll,
+      in_progress_groups,
+      player.force,
+      data.progress,
+      false,
+      "journey_no_in_progress",
+      "No items in progress."
+    )
 
 
     scroll.add({
@@ -469,42 +614,38 @@ local function update_journey_gui(player)
       caption = "Researched"
     })
 
-    if #researched_items == 0 then
-      scroll.add({
-        type = "label",
-        name = "journey_no_researched",
-        caption = "No researched items yet."
-      })
-    else
-      for _, item in ipairs(researched_items) do
-        add_journey_item_row(
-          scroll,
-          player.force,
-          item,
-          data.progress[item],
-          true
-        )
+    add_journey_category_groups(
+      scroll,
+      researched_groups,
+      player.force,
+      data.progress,
+      true,
+      "journey_no_researched",
+      "No researched items yet."
+    )
+  else
+    local function update_category_rows(groups, researched)
+      for _, group in ipairs(groups) do
+        local category =
+            scroll[get_journey_category_container_name(
+              group.name,
+              researched
+            )]
+
+        for _, item in ipairs(group.items) do
+          update_journey_item_row(
+            category[get_journey_row_name(item, researched)],
+            player.force,
+            item,
+            data.progress[item]
+          )
+        end
       end
     end
-  else
-    for _, item in ipairs(in_progress_items) do
-      update_journey_item_row(
-        scroll[get_journey_row_name(item, false)],
-        player.force,
-        item,
-        data.progress[item]
-      )
-    end
 
 
-    for _, item in ipairs(researched_items) do
-      update_journey_item_row(
-        scroll[get_journey_row_name(item, true)],
-        player.force,
-        item,
-        data.progress[item]
-      )
-    end
+    update_category_rows(in_progress_groups, false)
+    update_category_rows(researched_groups, true)
   end
 end
 
