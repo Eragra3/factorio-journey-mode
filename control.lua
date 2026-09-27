@@ -228,6 +228,13 @@ local function open_journey_gui(player)
 
 
   window.auto_center = true
+  window.style.width = 460
+
+
+  window.add({
+    type = "label",
+    caption = "Track item unlock progress"
+  })
 
 
   local scroll =
@@ -238,25 +245,108 @@ local function open_journey_gui(player)
 
 
   scroll.style.maximal_height = 500
+  scroll.style.width = 430
 
 
   local data =
       Research.get_force_data(player.force)
 
 
-  for item, progress in pairs(data.progress) do
-    local required =
-        Research.get_required_count(item)
+  local items = {}
+
+  for item in pairs(data.progress) do
+    table.insert(items, item)
+  end
+
+  table.sort(items)
 
 
+  if #items == 0 then
     scroll.add({
       type = "label",
-      caption =
-          item
-          .. ": "
-          .. progress
-          .. " / "
-          .. required
+      caption = "No item progress yet."
+    })
+  end
+
+
+  for _, item in ipairs(items) do
+    local progress = data.progress[item]
+    local required =
+        Research.get_required_count(item)
+    local item_prototype = prototypes.item[item]
+    local item_caption =
+        item_prototype and item_prototype.localised_name or item
+
+
+    local displayed_progress =
+        math.max(0, math.min(progress, required))
+
+    local row =
+        scroll.add({
+          type = "flow",
+          direction = "horizontal"
+        })
+
+    row.style.horizontal_spacing = 8
+    row.style.bottom_padding = 6
+
+
+    local icon_added = pcall(function()
+      row.add({
+        type = "sprite",
+        name = "journey_item_icon",
+        sprite = "item/" .. item,
+        tooltip = item
+      })
+    end)
+
+
+    if not icon_added then
+      row.add({
+        type = "label",
+        caption = "?",
+        tooltip = "No icon available for " .. item
+      })
+    end
+
+
+    local details =
+        row.add({
+          type = "flow",
+          direction = "vertical"
+        })
+
+    details.style.horizontally_stretchable = true
+    details.style.vertical_spacing = 4
+
+
+    details.add({
+      type = "label",
+      caption = item_caption
+    })
+
+
+    local progress_row =
+        details.add({
+          type = "flow",
+          direction = "horizontal"
+        })
+
+    progress_row.style.horizontal_spacing = 8
+
+
+    local progress_bar =
+        progress_row.add({
+          type = "progressbar",
+          value = displayed_progress / required
+        })
+
+    progress_bar.style.width = 250
+
+
+    progress_row.add({
+      type = "label",
+      caption = displayed_progress .. " / " .. required
     })
   end
 
