@@ -54,6 +54,24 @@ data:extend { researchChest, researchChestItem, researchChestItemRecipe }
 
 local FREE_RECIPE_TINT = { r = 0, g = 1, b = 1, a = 0.6 }
 
+local function get_item_prototype(item_name)
+  if data.raw.item and data.raw.item[item_name] then
+    return data.raw.item[item_name]
+  end
+
+
+  for _, prototypes in pairs(data.raw) do
+    if type(prototypes) == "table" then
+      local prototype = prototypes[item_name]
+
+      if prototype and prototype.stack_size ~= nil then
+        return prototype
+      end
+    end
+  end
+end
+
+
 local function get_recipe_icons(recipe)
   if recipe.icons then
     return table.deepcopy(recipe.icons)
@@ -70,15 +88,33 @@ local function get_recipe_icons(recipe)
   local results =
       recipe.results
       or (recipe.normal and recipe.normal.results)
+      or (recipe.expensive and recipe.expensive.results)
 
   local result = results and results[1]
 
+
   if not result then
-    return nil
+    local result_name =
+        recipe.result
+        or (recipe.normal and recipe.normal.result)
+        or (recipe.expensive and recipe.expensive.result)
+
+    if result_name then
+      result = {
+        type = "item",
+        name = result_name
+      }
+    else
+      return nil
+    end
   end
 
   local result_type = result.type or "item"
   local proto = data.raw[result_type] and data.raw[result_type][result.name]
+
+  if not proto and result_type == "item" then
+    proto = get_item_prototype(result.name)
+  end
 
   if not proto then
     return nil
