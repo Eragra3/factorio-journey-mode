@@ -101,14 +101,25 @@ local function get_research_chests()
 end
 
 
+local function get_research_fluid_tanks()
+  storage.research_fluid_tanks =
+      storage.research_fluid_tanks or {}
+
+  return storage.research_fluid_tanks
+end
+
+
 script.on_init(function()
   storage.research_chests = {}
+  storage.research_fluid_tanks = {}
 end)
 
 
 script.on_configuration_changed(function()
   storage.research_chests =
       storage.research_chests or {}
+  storage.research_fluid_tanks =
+      storage.research_fluid_tanks or {}
 
 
   for _, force in pairs(game.forces) do
@@ -124,7 +135,10 @@ end)
 
 
 script.on_event(
-  defines.events.on_built_entity,
+  {
+    defines.events.on_built_entity,
+    defines.events.on_robot_built_entity
+  },
   function(event)
     local entity = event.entity
 
@@ -132,6 +146,10 @@ script.on_event(
       local chests = get_research_chests()
 
       chests[entity.unit_number] = entity
+    elseif entity.name == "journey-research-fluid-tank" then
+      local tanks = get_research_fluid_tanks()
+
+      tanks[entity.unit_number] = entity
     end
   end
 )
@@ -146,6 +164,10 @@ script.on_event(
       local chests = get_research_chests()
 
       chests[entity.unit_number] = nil
+    elseif entity.name == "journey-research-fluid-tank" then
+      local tanks = get_research_fluid_tanks()
+
+      tanks[entity.unit_number] = nil
     end
   end
 )
@@ -195,6 +217,37 @@ script.on_nth_tick(
     end
 
 
+    local tanks = get_research_fluid_tanks()
+
+    for id, tank in pairs(tanks) do
+      if not tank.valid then
+        tanks[id] = nil
+      else
+        local fluid = tank.fluidbox[1]
+
+        if fluid
+            and fluid.amount > 0
+            and Research.has_recipe(tank.force, fluid.name)
+            and not Research.is_unlocked(tank.force, fluid.name)
+        then
+          local removed =
+              tank.remove_fluid({
+                name = fluid.name,
+                amount = fluid.amount
+              })
+
+          if removed > 0 then
+            Research.add_progress(
+              tank.force,
+              fluid.name,
+              removed
+            )
+          end
+        end
+      end
+    end
+
+
     refresh_open_journey_guis()
   end
 )
@@ -226,7 +279,9 @@ script.on_event(
 
 local function get_journey_item_caption(item)
   local found_prototype, caption = pcall(function()
-    local prototype = prototypes.item[item]
+    local prototype =
+        prototypes.item[item]
+        or prototypes.fluid[item]
 
     return prototype and prototype.localised_name
   end)
@@ -251,6 +306,15 @@ local function get_journey_item_group(item)
         order = item_group.order or item_group.name
       }
     end
+
+
+    if prototypes.fluid[item] then
+      return {
+        name = "fluids",
+        caption = "Fluids",
+        order = "zz-fluids"
+      }
+    end
   end)
 
   if found_group and group then
@@ -262,6 +326,23 @@ local function get_journey_item_group(item)
     caption = "Other",
     order = "zzzz"
   }
+end
+
+
+local function get_journey_icon_sprite(item)
+  local found_icon, sprite = pcall(function()
+    if prototypes.item[item] then
+      return "item/" .. item
+    elseif prototypes.fluid[item] then
+      return "fluid/" .. item
+    end
+  end)
+
+  if found_icon then
+    return sprite
+  end
+
+  return nil
 end
 
 
@@ -321,7 +402,9 @@ local function get_journey_items(force, force_data)
   for name, recipe in pairs(force.recipes) do
     if string.sub(name, 1, 13) == "journey-free-" then
       for _, product in pairs(recipe.products or {}) do
-        if (product.type or "item") == "item" then
+        if (product.type or "item") == "item"
+            or product.type == "fluid"
+        then
           progress[product.name] = progress[product.name] or 0
 
           if recipe.enabled then
@@ -410,7 +493,7 @@ local function add_journey_item_row(scroll, item, progress, researched)
     row.add({
       type = "sprite",
       name = "journey_item_icon",
-      sprite = "item/" .. item,
+      sprite = get_journey_icon_sprite(item),
       tooltip = item
     })
   end)
@@ -632,7 +715,7 @@ local function add_journey_summary_icon(grid, item)
     grid.add({
       type = "sprite",
       name = icon_name,
-      sprite = "item/" .. item,
+      sprite = get_journey_icon_sprite(item),
       tooltip = tooltip
     })
   end)

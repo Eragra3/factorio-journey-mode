@@ -11,6 +11,21 @@
 --    end
 -- end
 
+local function get_item_prototype(item_name)
+  if data.raw.item and data.raw.item[item_name] then
+    return data.raw.item[item_name]
+  end
+
+  for _, prototypes in pairs(data.raw) do
+    if type(prototypes) == "table" then
+      local prototype = prototypes[item_name]
+      if prototype and prototype.stack_size ~= nil then
+        return prototype
+      end
+    end
+  end
+end
+
 local researchChest = table.deepcopy(data.raw["logistic-container"]["active-provider-chest"])
 
 researchChest.name = "journey-research-chest"
@@ -50,27 +65,65 @@ local researchChestItemRecipe = {
 
 data:extend { researchChest, researchChestItem, researchChestItemRecipe }
 
+
+local researchFluidTank =
+    table.deepcopy(
+      data.raw["storage-tank"]["storage-tank"]
+    )
+
+researchFluidTank.name = "journey-research-fluid-tank"
+researchFluidTank.minable.result = "journey-research-fluid-tank"
+
+
+local storageTankItem = get_item_prototype("storage-tank")
+local researchFluidTankItem = table.deepcopy(storageTankItem)
+
+researchFluidTankItem.name = "journey-research-fluid-tank"
+researchFluidTankItem.place_result = researchFluidTank.name
+
+if researchFluidTankItem.icons then
+  for _, layer in pairs(researchFluidTankItem.icons) do
+    layer.tint = { r = 0, g = 1, b = 1, a = 0.3 }
+  end
+
+  researchFluidTankItem.icon = nil
+  researchFluidTankItem.icon_size = nil
+elseif researchFluidTankItem.icon then
+  researchFluidTankItem.icons = {
+    {
+      icon = researchFluidTankItem.icon,
+      icon_size = researchFluidTankItem.icon_size or 64,
+      tint = { r = 0, g = 1, b = 1, a = 0.3 }
+    }
+  }
+
+  researchFluidTankItem.icon = nil
+  researchFluidTankItem.icon_size = nil
+end
+
+
+local researchFluidTankItemRecipe = {
+  type = "recipe",
+  name = "journey-research-fluid-tank",
+  enabled = true,
+  energy_required = 8,
+  ingredients = {
+    { type = "item", name = "copper-plate", amount = 1 }
+  },
+  results = {
+    { type = "item", name = researchFluidTankItem.name, amount = 1 }
+  }
+}
+
+data:extend {
+  researchFluidTank,
+  researchFluidTankItem,
+  researchFluidTankItemRecipe
+}
+
 -- FREE RECIPIES
 
 local FREE_RECIPE_TINT = { r = 0, g = 1, b = 1, a = 0.6 }
-
-local function get_item_prototype(item_name)
-  if data.raw.item and data.raw.item[item_name] then
-    return data.raw.item[item_name]
-  end
-
-
-  for _, prototypes in pairs(data.raw) do
-    if type(prototypes) == "table" then
-      local prototype = prototypes[item_name]
-
-      if prototype and prototype.stack_size ~= nil then
-        return prototype
-      end
-    end
-  end
-end
-
 
 local function get_recipe_icons(recipe)
   if recipe.icons then

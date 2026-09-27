@@ -1,6 +1,7 @@
 local Research = {}
 
 local BASE_REQUIREMENT = 10000
+local FLUID_REQUIREMENT = 25000 -- One standard storage tank
 
 function Research.print_unlocked(item)
   local icon = ""
@@ -8,6 +9,8 @@ function Research.print_unlocked(item)
   local found_icon, icon_tag = pcall(function()
     if prototypes.item[item] then
       return "[img=item/" .. item .. "] "
+    elseif prototypes.fluid[item] then
+      return "[img=fluid/" .. item .. "] "
     end
   end)
 
@@ -24,7 +27,28 @@ function Research.print_unlocked(item)
   )
 end
 
+
+function Research.has_recipe(force, item)
+  for name, recipe in pairs(force.recipes) do
+    if string.sub(name, 1, 13) == "journey-free-" then
+      for _, product in pairs(recipe.products or {}) do
+        if product.name == item then
+          return true
+        end
+      end
+    end
+  end
+
+  return false
+end
+
+
 function Research.get_required_count(item_name)
+  if prototypes.fluid[item_name] then
+    return FLUID_REQUIREMENT
+  end
+
+
   local cost_data =
       prototypes.mod_data["journey-cost-data"]
 
@@ -49,9 +73,11 @@ end
 function Research.is_unlocked(force, item)
   for name, recipe in pairs(force.recipes) do
     if string.sub(name, 1, 13) == "journey-free-" then
-      for _, product in pairs(recipe.products) do
+      for _, product in pairs(recipe.products or {}) do
         if product.name == item then
-          return recipe.enabled
+          if recipe.enabled then
+            return true
+          end
         end
       end
     end
@@ -80,7 +106,7 @@ function Research.unlock_item(force, item)
     if not recipe.enabled
         and string.sub(name, 1, 13) == "journey-free-"
     then
-      for _, product in pairs(recipe.products) do
+      for _, product in pairs(recipe.products or {}) do
         if product.name == item then
           recipe.enabled = true
           break
