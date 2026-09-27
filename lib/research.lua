@@ -2,6 +2,12 @@ local Research = {}
 
 local BASE_REQUIREMENT = 10000
 local FLUID_REQUIREMENT = 25000 -- One standard storage tank
+local DIFFICULTY_MULTIPLIERS = {
+  Fast = 0.5,
+  Regular = 1,
+  Chore = 3,
+  Endgame = 10
+}
 
 function Research.print_unlocked(item)
   local icon = ""
@@ -43,33 +49,6 @@ function Research.has_recipe(force, item)
 end
 
 
-function Research.get_required_count(item_name)
-  if prototypes.fluid[item_name] then
-    return FLUID_REQUIREMENT
-  end
-
-
-  local cost_data =
-      prototypes.mod_data["journey-cost-data"]
-
-
-  local item =
-      cost_data.data[item_name]
-
-
-  if not item then
-    return BASE_REQUIREMENT
-  end
-
-
-  return math.max(
-    1,
-    math.floor(
-      BASE_REQUIREMENT / item.value
-    )
-  )
-end
-
 function Research.is_unlocked(force, item)
   for name, recipe in pairs(force.recipes) do
     if string.sub(name, 1, 13) == "journey-free-" then
@@ -95,10 +74,71 @@ function Research.get_force_data(force)
 
   storage.journey.forces[force.index] =
       storage.journey.forces[force.index] or {
-        progress = {}
+        progress = {},
+        difficulty = "Regular"
       }
 
-  return storage.journey.forces[force.index]
+  local force_data = storage.journey.forces[force.index]
+  force_data.progress = force_data.progress or {}
+  force_data.difficulty = force_data.difficulty or "Regular"
+
+  return force_data
+end
+
+
+function Research.get_difficulty(force)
+  local difficulty =
+      Research.get_force_data(force).difficulty
+
+  return difficulty, DIFFICULTY_MULTIPLIERS[difficulty] or 1
+end
+
+
+function Research.set_difficulty(force, requested_difficulty)
+  local requested =
+      string.lower(requested_difficulty or "")
+
+  for difficulty, multiplier in pairs(DIFFICULTY_MULTIPLIERS) do
+    if string.lower(difficulty) == requested then
+      Research.get_force_data(force).difficulty = difficulty
+      return true, difficulty, multiplier
+    end
+  end
+
+  return false
+end
+
+
+function Research.get_required_count(item_name, force)
+  local cost_data =
+      prototypes.mod_data["journey-cost-data"]
+
+  local item =
+      cost_data.data[item_name]
+
+  local base_requirement =
+      prototypes.fluid[item_name]
+      and FLUID_REQUIREMENT
+      or BASE_REQUIREMENT
+
+  local complexity =
+      item and item.complexity or 1
+
+  local difficulty_multiplier = 1
+
+  if force then
+    local _, multiplier = Research.get_difficulty(force)
+    difficulty_multiplier = multiplier
+  end
+
+  return math.max(
+    1,
+    math.floor(
+      base_requirement
+      * complexity
+      * difficulty_multiplier
+    )
+  )
 end
 
 function Research.unlock_item(force, item)
@@ -135,7 +175,7 @@ function Research.add_progress(force, item, amount)
 
 
   local required =
-      Research.get_required_count(item)
+      Research.get_required_count(item, force)
 
 
   local previous_progress =

@@ -1,5 +1,6 @@
 local raw_cache = {}
 local resolving = {}
+local chosen_recipes = {}
 
 local recipes_by_result = {}
 
@@ -29,26 +30,7 @@ end
 
 
 --------------------------------------------------
--- Build recipe index
---------------------------------------------------
-
-for _, recipe in pairs(data.raw.recipe) do
-  if not string.find(recipe.name, "journey") and recipe.results then
-    for _, result in pairs(recipe.results) do
-      recipes_by_result[result.name] =
-          recipes_by_result[result.name] or {}
-
-      table.insert(
-        recipes_by_result[result.name],
-        recipe
-      )
-    end
-  end
-end
-
-
---------------------------------------------------
--- Helpers
+-- Recipe helpers and index
 --------------------------------------------------
 
 local function get_recipe_ingredients(recipe)
@@ -58,6 +40,10 @@ local function get_recipe_ingredients(recipe)
 
   if recipe.normal and recipe.normal.ingredients then
     return recipe.normal.ingredients
+  end
+
+  if recipe.expensive and recipe.expensive.ingredients then
+    return recipe.expensive.ingredients
   end
 
   return {}
@@ -73,7 +59,44 @@ local function get_recipe_results(recipe)
     return recipe.normal.results
   end
 
+  if recipe.expensive and recipe.expensive.results then
+    return recipe.expensive.results
+  end
+
+  local result_name =
+      recipe.result
+      or (recipe.normal and recipe.normal.result)
+      or (recipe.expensive and recipe.expensive.result)
+
+  if result_name then
+    return {
+      {
+        type = "item",
+        name = result_name,
+        amount = recipe.result_count
+            or (recipe.normal and recipe.normal.result_count)
+            or (recipe.expensive and recipe.expensive.result_count)
+            or 1
+      }
+    }
+  end
+
   return {}
+end
+
+
+for _, recipe in pairs(data.raw.recipe) do
+  if not string.find(recipe.name, "journey") then
+    for _, result in pairs(get_recipe_results(recipe)) do
+      recipes_by_result[result.name] =
+          recipes_by_result[result.name] or {}
+
+      table.insert(
+        recipes_by_result[result.name],
+        recipe
+      )
+    end
+  end
 end
 
 
@@ -246,7 +269,15 @@ end
 local function get_output_amount(recipe, item_name)
   for _, result in pairs(get_recipe_results(recipe)) do
     if result.name == item_name then
-      return result.amount or 1
+      if result.amount then
+        return result.amount
+      end
+
+      if result.amount_min and result.amount_max then
+        return (result.amount_min + result.amount_max) / 2
+      end
+
+      return 1
     end
   end
 
@@ -273,12 +304,33 @@ local function cost_value(cost)
       multiplier = 10
     elseif item == "crude-oil" then
       multiplier = 2
+    elseif item == "water" then
+      multiplier = 0.1
+    elseif item == "steam" then
+      multiplier = 0.2
     end
 
     value = value + amount * multiplier
   end
 
   return value
+end
+
+
+local function get_recipe_energy(recipe)
+  return recipe.energy_required
+      or (recipe.normal and recipe.normal.energy_required)
+      or (recipe.expensive and recipe.expensive.energy_required)
+      or 0.5
+end
+
+
+local function get_recipe_categories(recipe)
+  if recipe.categories then
+    return recipe.categories
+  end
+
+  return { recipe.category or "crafting" }
 end
 
 
@@ -319,6 +371,7 @@ local function calculate_raw(item_name)
     }
 
     raw_cache[item_name] = result
+    chosen_recipes[item_name] = nil
     resolving[item_name] = nil
 
     return result
@@ -327,6 +380,7 @@ local function calculate_raw(item_name)
 
   local best_cost = nil
   local best_value = math.huge
+  local best_recipe = nil
 
 
   for _, recipe in pairs(recipes) do
@@ -364,6 +418,7 @@ local function calculate_raw(item_name)
     if value < best_value then
       best_value = value
       best_cost = current
+      best_recipe = recipe
     end
   end
 
@@ -380,27 +435,251 @@ local function calculate_raw(item_name)
 
 
   raw_cache[item_name] = best_cost
+  chosen_recipes[item_name] = best_recipe
 
   return best_cost
 end
 
 
 --------------------------------------------------
--- Calculate all items
+-- Calculate material, time, and structure requirements
 --------------------------------------------------
+
+local item_prototypes = {}
+
+
+for _, prototypes in pairs(data.raw) do
+  if type(prototypes) == "table" then
+    for item_name, prototype in pairs(prototypes) do
+      if type(prototype) == "table"
+          and prototype.stack_size ~= nil
+      then
+        item_prototypes[item_name] = prototype
+      end
+    end
+  end
+end
+
+
+local material_values = {}
+local machine_items = {}
+
+for item_name, prototype in pairs(item_prototypes) do
+  local raw = calculate_raw(item_name)
+  material_values[item_name] = cost_value(raw)
+
+  if prototype.place_result then
+    local previous = machine_items[prototype.place_result]
+
+    if not previous or material_values[item_name] < previous then
+      machine_items[prototype.place_result] = material_values[item_name]
+    end
+  end
+end
+
+
+for fluid_name in pairs(data.raw.fluid) do
+  local raw = calculate_raw(fluid_name)
+  material_values[fluid_name] = cost_value(raw)
+end
+
+
+local machine_cost_by_category = {
+  crafting = 0
+}
+
+for _, prototypes in pairs(data.raw) do
+  if type(prototypes) == "table" then
+    for entity_name, machine in pairs(prototypes) do
+      if type(machine) == "table" and machine.crafting_categories then
+        local machine_cost = machine_items[entity_name]
+
+        if machine_cost then
+          for _, category in pairs(machine.crafting_categories) do
+            local previous = machine_cost_by_category[category]
+
+            if not previous or machine_cost < previous then
+              machine_cost_by_category[category] = machine_cost
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+
+local function get_structure_cost(recipe)
+  local best_cost = math.huge
+
+  for _, category in pairs(get_recipe_categories(recipe)) do
+    local cost = machine_cost_by_category[category]
+
+    if cost and cost < best_cost then
+      best_cost = cost
+    end
+  end
+
+  if best_cost == math.huge then
+    return 0
+  end
+
+  return best_cost
+end
+
+
+local structure_cost_cache = {}
+local structure_cost_resolving = {}
+
+local function calculate_structure_cost(item_name)
+  if structure_cost_cache[item_name] ~= nil then
+    return structure_cost_cache[item_name]
+  end
+
+
+  if structure_cost_resolving[item_name] then
+    return 0
+  end
+
+
+  local recipe = chosen_recipes[item_name]
+
+  if not recipe then
+    structure_cost_cache[item_name] = 0
+    return 0
+  end
+
+
+  structure_cost_resolving[item_name] = true
+
+  local output = math.max(0.001, get_output_amount(recipe, item_name))
+  local cost = get_structure_cost(recipe)
+
+  for _, ingredient in pairs(get_recipe_ingredients(recipe)) do
+    cost = cost
+        + ingredient.amount / output
+        * calculate_structure_cost(ingredient.name)
+  end
+
+
+  structure_cost_resolving[item_name] = nil
+  structure_cost_cache[item_name] = cost
+
+  return cost
+end
+
+
+local crafting_time_cache = {}
+local crafting_time_resolving = {}
+
+local function calculate_crafting_time(item_name)
+  if crafting_time_cache[item_name] ~= nil then
+    return crafting_time_cache[item_name]
+  end
+
+
+  if crafting_time_resolving[item_name] then
+    return 0
+  end
+
+
+  local recipe = chosen_recipes[item_name]
+
+  if not recipe then
+    crafting_time_cache[item_name] = 0
+    return 0
+  end
+
+
+  crafting_time_resolving[item_name] = true
+
+  local output = math.max(0.001, get_output_amount(recipe, item_name))
+  local time = get_recipe_energy(recipe) / output
+
+  for _, ingredient in pairs(get_recipe_ingredients(recipe)) do
+    time = time
+        + ingredient.amount / output
+        * calculate_crafting_time(ingredient.name)
+  end
+
+
+  crafting_time_resolving[item_name] = nil
+  crafting_time_cache[item_name] = time
+
+  return time
+end
+
+
+local function get_raw_amount(raw)
+  local amount = 0
+
+  for _, count in pairs(raw) do
+    amount = amount + count
+  end
+
+  return amount
+end
+
+
+local function calculate_item_cost(item_name)
+  local raw = calculate_raw(item_name)
+  local material_value = cost_value(raw)
+  local recipe = chosen_recipes[item_name]
+
+  if not recipe then
+    return {
+      value = material_value,
+      complexity = 1,
+      raw = raw,
+      ingredient_amount = get_raw_amount(raw),
+      crafting_time = 0,
+      structure_cost = 0
+    }
+  end
+
+
+  local ingredient_amount =
+      get_raw_amount(raw)
+  local crafting_time =
+      calculate_crafting_time(item_name)
+  local structure_cost =
+      calculate_structure_cost(item_name)
+
+  local score =
+      material_value
+      + ingredient_amount * 0.05
+      + crafting_time * 0.25
+      + structure_cost * 0.1
+
+  local complexity =
+      math.max(
+        1,
+        math.log(1 + score) / math.log(2)
+      )
+
+
+  return {
+    value = material_value,
+    complexity = complexity,
+    raw = raw,
+    ingredient_amount = ingredient_amount,
+    crafting_time = crafting_time,
+    structure_cost = structure_cost
+  }
+end
+
 
 local journey_costs = {}
 
+for item_name in pairs(item_prototypes) do
+  journey_costs[item_name] =
+      calculate_item_cost(item_name)
+end
 
-for item_name in pairs(data.raw.item) do
-  local raw =
-      calculate_raw(item_name)
 
-
-  journey_costs[item_name] = {
-    value = cost_value(raw),
-    raw = raw
-  }
+for fluid_name in pairs(data.raw.fluid) do
+  journey_costs[fluid_name] =
+      calculate_item_cost(fluid_name)
 end
 
 

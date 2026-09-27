@@ -47,6 +47,74 @@ commands.add_command(
 
 
 commands.add_command(
+  "journey_difficulty",
+  "Set Journey research difficulty",
+  function(command)
+    local player =
+        game.get_player(command.player_index)
+
+    if not player then
+      return
+    end
+
+
+    local requested =
+        command.parameter
+        and command.parameter:match("^%s*(%S+)")
+
+    if not requested then
+      local difficulty, multiplier =
+          Research.get_difficulty(player.force)
+
+      player.print(
+        "Journey difficulty: "
+        .. difficulty
+        .. " (x"
+        .. multiplier
+        .. "). Usage: /journey_difficulty Fast|Regular|Chore|Endgame"
+      )
+
+      return
+    end
+
+
+    local changed, difficulty, multiplier =
+        Research.set_difficulty(player.force, requested)
+
+    if not changed then
+      player.print(
+        "Usage: /journey_difficulty Fast|Regular|Chore|Endgame"
+      )
+
+      return
+    end
+
+
+    local data =
+        Research.get_force_data(player.force)
+
+    for item, progress in pairs(data.progress) do
+      if not Research.is_unlocked(player.force, item)
+          and progress >= Research.get_required_count(item, player.force)
+      then
+        Research.unlock_item(player.force, item)
+        Research.print_unlocked(item)
+      end
+    end
+
+
+    player.print(
+      "Journey difficulty set to "
+      .. difficulty
+      .. " (x"
+      .. multiplier
+      .. ")."
+    )
+  end
+)
+
+
+commands.add_command(
   "journey_recheck",
   "Re-check research progress and unlock anything past threshold",
   function(command)
@@ -67,7 +135,7 @@ commands.add_command(
     for item, progress in pairs(data.progress) do
       if not Research.is_unlocked(player.force, item) then
         local required =
-            Research.get_required_count(item)
+            Research.get_required_count(item, player.force)
 
 
         if progress >= required then
@@ -126,7 +194,7 @@ script.on_configuration_changed(function()
     local data = Research.get_force_data(force)
 
     for item, progress in pairs(data.progress) do
-      if progress >= Research.get_required_count(item) then
+      if progress >= Research.get_required_count(item, force) then
         Research.unlock_item(force, item)
       end
     end
@@ -435,9 +503,9 @@ local function get_journey_items(force, force_data)
 end
 
 
-local function update_journey_item_row(row, item, progress, researched)
+local function update_journey_item_row(row, force, item, progress, researched)
   local required =
-      Research.get_required_count(item)
+      Research.get_required_count(item, force)
 
   local displayed_progress =
       math.max(0, math.min(progress, required))
@@ -477,7 +545,7 @@ local function get_journey_row_name(item, researched)
 end
 
 
-local function add_journey_item_row(scroll, item, progress, researched)
+local function add_journey_item_row(scroll, force, item, progress, researched)
   local row =
       scroll.add({
         type = "flow",
@@ -569,13 +637,14 @@ local function add_journey_item_row(scroll, item, progress, researched)
   })
 
 
-  update_journey_item_row(row, item, progress, researched)
+  update_journey_item_row(row, force, item, progress, researched)
 end
 
 
 local function add_journey_category_groups(
     scroll,
     groups,
+    force,
     progress,
     researched,
     empty_message_name,
@@ -616,6 +685,7 @@ local function add_journey_category_groups(
     for _, item in ipairs(group.items) do
       add_journey_item_row(
         category,
+        force,
         item,
         progress[item],
         researched
@@ -628,6 +698,7 @@ end
 local function update_journey_category_scroll(
     scroll,
     groups,
+    force,
     progress,
     researched,
     empty_message_name,
@@ -673,6 +744,7 @@ local function update_journey_category_scroll(
     add_journey_category_groups(
       scroll,
       groups,
+      force,
       progress,
       researched,
       empty_message_name,
@@ -693,6 +765,7 @@ local function update_journey_category_scroll(
     for _, item in ipairs(group.items) do
       update_journey_item_row(
         category[get_journey_row_name(item, researched)],
+        force,
         item,
         progress[item],
         researched
@@ -834,8 +907,16 @@ local function update_journey_gui(player)
   local progress, todo_items, researched_items =
       get_journey_items(player.force, data)
 
+  local in_progress_items = {}
+
+  for _, item in ipairs(todo_items) do
+    if progress[item] > 0 then
+      table.insert(in_progress_items, item)
+    end
+  end
+
   local todo_groups =
-      get_journey_category_groups(todo_items)
+      get_journey_category_groups(in_progress_items)
   local researched_groups =
       get_journey_category_groups(researched_items)
 
@@ -845,15 +926,17 @@ local function update_journey_gui(player)
   update_journey_category_scroll(
     tabs.journey_in_progress,
     todo_groups,
+    player.force,
     progress,
     false,
     "journey_no_in_progress",
-    "No recipes left to research."
+    "No items in progress."
   )
 
   update_journey_category_scroll(
     tabs.journey_researched,
     researched_groups,
+    player.force,
     progress,
     true,
     "journey_no_researched",
