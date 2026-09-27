@@ -263,11 +263,20 @@ local function update_journey_item_row(row, force, item, progress)
 end
 
 
-local function add_journey_item_row(scroll, force, item, progress)
+local function get_journey_row_name(item, researched)
+  local section =
+      researched and "journey_researched_item_row_"
+      or "journey_progress_item_row_"
+
+  return section .. item
+end
+
+
+local function add_journey_item_row(scroll, force, item, progress, researched)
   local row =
       scroll.add({
         type = "flow",
-        name = "journey_item_row_" .. item,
+        name = get_journey_row_name(item, researched),
         direction = "horizontal"
       })
 
@@ -371,6 +380,8 @@ local function update_journey_gui(player)
       Research.get_force_data(player.force)
 
   local items = {}
+  local in_progress_items = {}
+  local researched_items = {}
 
   for item in pairs(data.progress) do
     table.insert(items, item)
@@ -379,11 +390,25 @@ local function update_journey_gui(player)
   table.sort(items)
 
 
+  for _, item in ipairs(items) do
+    if Research.is_unlocked(player.force, item) then
+      table.insert(researched_items, item)
+    else
+      table.insert(in_progress_items, item)
+    end
+  end
+
+
   local rebuild =
-      #items == 0 and not scroll.journey_empty_message
+      not scroll.journey_in_progress_header
+      or not scroll.journey_section_divider
+      or not scroll.journey_researched_header
 
   for _, item in ipairs(items) do
-    if not scroll["journey_item_row_" .. item] then
+    local researched =
+        Research.is_unlocked(player.force, item)
+
+    if not scroll[get_journey_row_name(item, researched)] then
       rebuild = true
       break
     end
@@ -393,26 +418,75 @@ local function update_journey_gui(player)
   if rebuild then
     scroll.clear()
 
-    if #items == 0 then
+    scroll.add({
+      type = "label",
+      name = "journey_in_progress_header",
+      caption = "In Progress"
+    })
+
+    if #in_progress_items == 0 then
       scroll.add({
         type = "label",
-        name = "journey_empty_message",
-        caption = "No item progress yet."
+        name = "journey_no_in_progress",
+        caption = "No items in progress."
       })
     else
-      for _, item in ipairs(items) do
+      for _, item in ipairs(in_progress_items) do
         add_journey_item_row(
           scroll,
           player.force,
           item,
-          data.progress[item]
+          data.progress[item],
+          false
+        )
+      end
+    end
+
+
+    scroll.add({
+      type = "line",
+      name = "journey_section_divider",
+      direction = "horizontal"
+    })
+
+
+    scroll.add({
+      type = "label",
+      name = "journey_researched_header",
+      caption = "Researched"
+    })
+
+    if #researched_items == 0 then
+      scroll.add({
+        type = "label",
+        name = "journey_no_researched",
+        caption = "No researched items yet."
+      })
+    else
+      for _, item in ipairs(researched_items) do
+        add_journey_item_row(
+          scroll,
+          player.force,
+          item,
+          data.progress[item],
+          true
         )
       end
     end
   else
-    for _, item in ipairs(items) do
+    for _, item in ipairs(in_progress_items) do
       update_journey_item_row(
-        scroll["journey_item_row_" .. item],
+        scroll[get_journey_row_name(item, false)],
+        player.force,
+        item,
+        data.progress[item]
+      )
+    end
+
+
+    for _, item in ipairs(researched_items) do
+      update_journey_item_row(
+        scroll[get_journey_row_name(item, true)],
         player.force,
         item,
         data.progress[item]
