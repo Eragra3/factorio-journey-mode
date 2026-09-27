@@ -112,18 +112,19 @@ function Research.add_progress(force, item, amount)
       Research.get_required_count(item)
 
 
+  local previous_progress =
+      data.progress[item] or 0
+
   data.progress[item] =
-      math.min(
-        (data.progress[item] or 0)
-        + amount,
-        required
-      )
+      math.min(previous_progress + amount, required)
 
 
   if data.progress[item] >= required then
     Research.unlock_item(force, item)
 
-    Research.print_unlocked(item)
+    if previous_progress < required then
+      Research.print_unlocked(item)
+    end
   end
 end
 

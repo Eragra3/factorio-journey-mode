@@ -109,6 +109,17 @@ end)
 script.on_configuration_changed(function()
   storage.research_chests =
       storage.research_chests or {}
+
+
+  for _, force in pairs(game.forces) do
+    local data = Research.get_force_data(force)
+
+    for item, progress in pairs(data.progress) do
+      if progress >= Research.get_required_count(item) then
+        Research.unlock_item(force, item)
+      end
+    end
+  end
 end)
 
 

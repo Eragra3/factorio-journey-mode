@@ -77,6 +77,104 @@ local function get_recipe_results(recipe)
 end
 
 
+--------------------------------------------------
+-- Give items without recipes a free crafting recipe
+--------------------------------------------------
+
+local items_with_free_recipes = {}
+
+local function mark_free_recipe_products(recipe)
+  local result_sets = {
+    recipe.results,
+    recipe.normal and recipe.normal.results,
+    recipe.expensive and recipe.expensive.results
+  }
+
+  for _, results in pairs(result_sets) do
+    for _, result in pairs(results or {}) do
+      if (result.type or "item") == "item" then
+        items_with_free_recipes[result.name] = true
+      end
+    end
+  end
+
+
+  local singular_results = {
+    recipe.result,
+    recipe.normal and recipe.normal.result,
+    recipe.expensive and recipe.expensive.result
+  }
+
+  for _, result in pairs(singular_results) do
+    if result then
+      items_with_free_recipes[result] = true
+    end
+  end
+end
+
+
+for name, recipe in pairs(data.raw.recipe) do
+  if string.sub(name, 1, 13) == "journey-free-" then
+    mark_free_recipe_products(recipe)
+  end
+end
+
+
+for item_name, item in pairs(data.raw.item) do
+  if not items_with_free_recipes[item_name] then
+    local recipe_name = "journey-free-item-" .. item_name
+
+    while data.raw.recipe[recipe_name] do
+      recipe_name = recipe_name .. "-fallback"
+    end
+
+
+    local free_recipe = {
+      type = "recipe",
+      name = recipe_name,
+      category = "crafting",
+      enabled = false,
+      ingredients = {},
+      results = {
+        { type = "item", name = item_name, amount = 1 }
+      },
+      localised_name = {
+        "",
+        "Free ",
+        item.localised_name or item_name
+      }
+    }
+
+
+    local icons = nil
+
+    if item.icons then
+      icons = table.deepcopy(item.icons)
+    elseif item.icon then
+      icons = {
+        {
+          icon = item.icon,
+          icon_size = item.icon_size or 64
+        }
+      }
+    end
+
+
+    if icons then
+      for _, layer in pairs(icons) do
+        layer.tint = { r = 0, g = 1, b = 1, a = 0.6 }
+      end
+
+      free_recipe.icons = icons
+    end
+
+
+    data:extend({ free_recipe })
+    items_with_free_recipes[item_name] = true
+  end
+end
+
+
 local function get_output_amount(recipe, item_name)
   for _, result in pairs(get_recipe_results(recipe)) do
     if result.name == item_name then
