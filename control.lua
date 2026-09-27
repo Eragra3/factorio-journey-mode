@@ -509,6 +509,13 @@ local function update_journey_item_row(row, force, item, progress, researched)
 
   local displayed_progress =
       math.max(0, math.min(progress, required))
+  local displayed_count = displayed_progress
+
+  if prototypes.fluid[item] then
+    displayed_count = math.floor(displayed_progress + 0.5)
+  end
+
+
   local details = row.journey_item_details
   local title_row = details.journey_item_title_row
   local progress_row = details.journey_progress_row
@@ -532,7 +539,7 @@ local function update_journey_item_row(row, force, item, progress, researched)
   }
 
   progress_row.journey_progress_count.caption =
-      displayed_progress .. " / " .. required
+      displayed_count .. " / " .. required
 end
 
 
