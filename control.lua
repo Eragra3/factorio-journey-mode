@@ -309,15 +309,55 @@ local function get_journey_category_groups(items)
 end
 
 
-local function update_journey_item_row(row, force, item, progress)
+local function get_journey_items(force, force_data)
+  local progress = {}
+  local researched = {}
+
+  for item, amount in pairs(force_data.progress) do
+    progress[item] = amount
+  end
+
+
+  for name, recipe in pairs(force.recipes) do
+    if string.sub(name, 1, 13) == "journey-free-" then
+      for _, product in pairs(recipe.products or {}) do
+        if (product.type or "item") == "item" then
+          progress[product.name] = progress[product.name] or 0
+
+          if recipe.enabled then
+            researched[product.name] = true
+          end
+        end
+      end
+    end
+  end
+
+
+  local todo_items = {}
+  local researched_items = {}
+
+  for item in pairs(progress) do
+    if researched[item] then
+      table.insert(researched_items, item)
+    else
+      table.insert(todo_items, item)
+    end
+  end
+
+  table.sort(todo_items)
+  table.sort(researched_items)
+
+
+  return progress, todo_items, researched_items
+end
+
+
+local function update_journey_item_row(row, item, progress, researched)
   local required =
       Research.get_required_count(item)
 
   local displayed_progress =
       math.max(0, math.min(progress, required))
-  local researched =
-      Research.is_unlocked(force, item)
-
   local details = row.journey_item_details
   local title_row = details.journey_item_title_row
   local progress_row = details.journey_progress_row
@@ -354,7 +394,7 @@ local function get_journey_row_name(item, researched)
 end
 
 
-local function add_journey_item_row(scroll, force, item, progress, researched)
+local function add_journey_item_row(scroll, item, progress, researched)
   local row =
       scroll.add({
         type = "flow",
@@ -446,14 +486,13 @@ local function add_journey_item_row(scroll, force, item, progress, researched)
   })
 
 
-  update_journey_item_row(row, force, item, progress)
+  update_journey_item_row(row, item, progress, researched)
 end
 
 
 local function add_journey_category_groups(
     scroll,
     groups,
-    force,
     progress,
     researched,
     empty_message_name,
@@ -494,13 +533,201 @@ local function add_journey_category_groups(
     for _, item in ipairs(group.items) do
       add_journey_item_row(
         category,
-        force,
         item,
         progress[item],
         researched
       )
     end
   end
+end
+
+
+local function update_journey_category_scroll(
+    scroll,
+    groups,
+    progress,
+    researched,
+    empty_message_name,
+    empty_message
+  )
+  local rebuild =
+      #groups == 0 and not scroll[empty_message_name]
+
+  for _, group in ipairs(groups) do
+    local category =
+        scroll[get_journey_category_container_name(
+          group.name,
+          researched
+        )]
+
+    if not category then
+      rebuild = true
+      break
+    end
+
+
+    if #category.children ~= #group.items + 1 then
+      rebuild = true
+      break
+    end
+
+
+    for _, item in ipairs(group.items) do
+      if not category[get_journey_row_name(item, researched)] then
+        rebuild = true
+        break
+      end
+    end
+
+    if rebuild then
+      break
+    end
+  end
+
+
+  if rebuild then
+    scroll.clear()
+    add_journey_category_groups(
+      scroll,
+      groups,
+      progress,
+      researched,
+      empty_message_name,
+      empty_message
+    )
+
+    return
+  end
+
+
+  for _, group in ipairs(groups) do
+    local category =
+        scroll[get_journey_category_container_name(
+          group.name,
+          researched
+        )]
+
+    for _, item in ipairs(group.items) do
+      update_journey_item_row(
+        category[get_journey_row_name(item, researched)],
+        item,
+        progress[item],
+        researched
+      )
+    end
+  end
+end
+
+
+local function get_journey_summary_icon_name(item)
+  return "journey_summary_icon_" .. item
+end
+
+
+local function add_journey_summary_icon(grid, item)
+  local icon_name = get_journey_summary_icon_name(item)
+  local tooltip = get_journey_item_caption(item)
+
+  local icon_added = pcall(function()
+    grid.add({
+      type = "sprite",
+      name = icon_name,
+      sprite = "item/" .. item,
+      tooltip = tooltip
+    })
+  end)
+
+
+  if not icon_added then
+    grid.add({
+      type = "label",
+      name = icon_name,
+      caption = "?",
+      tooltip = tooltip
+    })
+  end
+end
+
+
+local function add_journey_summary_icons(grid, items)
+  for _, item in ipairs(items) do
+    add_journey_summary_icon(grid, item)
+  end
+end
+
+
+local function update_journey_summary(scroll, todo_items, researched_items)
+  local todo_grid = scroll.journey_summary_todo_icons
+  local researched_grid = scroll.journey_summary_researched_icons
+
+  local rebuild =
+      not scroll.journey_summary_todo_header
+      or not scroll.journey_summary_researched_header
+      or not todo_grid
+      or not researched_grid
+
+
+  local function has_icons(grid, items)
+    if #grid.children ~= #items then
+      return false
+    end
+
+
+    for _, item in ipairs(items) do
+      if not grid[get_journey_summary_icon_name(item)] then
+        return false
+      end
+    end
+
+    return true
+  end
+
+
+  if not rebuild
+      and (not has_icons(todo_grid, todo_items)
+        or not has_icons(researched_grid, researched_items))
+  then
+    rebuild = true
+  end
+
+
+  if not rebuild then
+    return
+  end
+
+
+  scroll.clear()
+
+  scroll.add({
+    type = "label",
+    name = "journey_summary_todo_header",
+    caption = "TODO"
+  })
+
+  local new_todo_grid =
+      scroll.add({
+        type = "table",
+        name = "journey_summary_todo_icons",
+        column_count = 8
+      })
+
+  add_journey_summary_icons(new_todo_grid, todo_items)
+
+
+  scroll.add({
+    type = "label",
+    name = "journey_summary_researched_header",
+    caption = "Researched"
+  })
+
+  local new_researched_grid =
+      scroll.add({
+        type = "table",
+        name = "journey_summary_researched_icons",
+        column_count = 8
+      })
+
+  add_journey_summary_icons(new_researched_grid, researched_items)
 end
 
 
@@ -512,141 +739,49 @@ local function update_journey_gui(player)
   end
 
 
-  local scroll = window.journey_list
+  if not window.journey_tabs then
+    window.destroy()
+    return
+  end
+
+
   local data =
       Research.get_force_data(player.force)
 
-  local items = {}
-  local in_progress_items = {}
-  local researched_items = {}
+  local progress, todo_items, researched_items =
+      get_journey_items(player.force, data)
 
-  for item in pairs(data.progress) do
-    table.insert(items, item)
-  end
-
-  table.sort(items)
-
-
-  for _, item in ipairs(items) do
-    if Research.is_unlocked(player.force, item) then
-      table.insert(researched_items, item)
-    else
-      table.insert(in_progress_items, item)
-    end
-  end
-
-
-  local in_progress_groups =
-      get_journey_category_groups(in_progress_items)
+  local todo_groups =
+      get_journey_category_groups(todo_items)
   local researched_groups =
       get_journey_category_groups(researched_items)
 
-
-  local rebuild =
-      not scroll.journey_in_progress_header
-      or not scroll.journey_section_divider
-      or not scroll.journey_researched_header
-      or (#in_progress_groups == 0 and not scroll.journey_no_in_progress)
-      or (#researched_groups == 0 and not scroll.journey_no_researched)
-
-  local function has_category_rows(groups, researched)
-    for _, group in ipairs(groups) do
-      local category =
-          scroll[get_journey_category_container_name(
-            group.name,
-            researched
-          )]
-
-      if not category then
-        return false
-      end
+  local tabs = window.journey_tabs
 
 
-      for _, item in ipairs(group.items) do
-        if not category[get_journey_row_name(item, researched)] then
-          return false
-        end
-      end
-    end
+  update_journey_category_scroll(
+    tabs.journey_in_progress,
+    todo_groups,
+    progress,
+    false,
+    "journey_no_in_progress",
+    "No recipes left to research."
+  )
 
+  update_journey_category_scroll(
+    tabs.journey_researched,
+    researched_groups,
+    progress,
+    true,
+    "journey_no_researched",
+    "No researched recipes yet."
+  )
 
-    return true
-  end
-
-
-  if not has_category_rows(in_progress_groups, false)
-      or not has_category_rows(researched_groups, true)
-  then
-    rebuild = true
-  end
-
-
-  if rebuild then
-    scroll.clear()
-
-    scroll.add({
-      type = "label",
-      name = "journey_in_progress_header",
-      caption = "In Progress"
-    })
-
-    add_journey_category_groups(
-      scroll,
-      in_progress_groups,
-      player.force,
-      data.progress,
-      false,
-      "journey_no_in_progress",
-      "No items in progress."
-    )
-
-
-    scroll.add({
-      type = "line",
-      name = "journey_section_divider",
-      direction = "horizontal"
-    })
-
-
-    scroll.add({
-      type = "label",
-      name = "journey_researched_header",
-      caption = "Researched"
-    })
-
-    add_journey_category_groups(
-      scroll,
-      researched_groups,
-      player.force,
-      data.progress,
-      true,
-      "journey_no_researched",
-      "No researched items yet."
-    )
-  else
-    local function update_category_rows(groups, researched)
-      for _, group in ipairs(groups) do
-        local category =
-            scroll[get_journey_category_container_name(
-              group.name,
-              researched
-            )]
-
-        for _, item in ipairs(group.items) do
-          update_journey_item_row(
-            category[get_journey_row_name(item, researched)],
-            player.force,
-            item,
-            data.progress[item]
-          )
-        end
-      end
-    end
-
-
-    update_category_rows(in_progress_groups, false)
-    update_category_rows(researched_groups, true)
-  end
+  update_journey_summary(
+    tabs.journey_summary,
+    todo_items,
+    researched_items
+  )
 end
 
 
@@ -679,21 +814,67 @@ local function open_journey_gui(player)
   window.style.width = 460
 
 
-  window.add({
-    type = "label",
-    caption = "Track item unlock progress"
-  })
-
-
-  local scroll =
+  local tabs =
       window.add({
-        type = "scroll-pane",
-        name = "journey_list"
+        type = "tabbed-pane",
+        name = "journey_tabs"
       })
 
+  tabs.style.width = 430
 
-  scroll.style.maximal_height = 500
-  scroll.style.width = 430
+
+  local in_progress_tab =
+      tabs.add({
+        type = "tab",
+        name = "journey_in_progress_tab",
+        caption = "In Progress"
+      })
+
+  local in_progress_scroll =
+      tabs.add({
+        type = "scroll-pane",
+        name = "journey_in_progress"
+      })
+
+  in_progress_scroll.style.maximal_height = 500
+  in_progress_scroll.style.width = 430
+  tabs.add_tab(in_progress_tab, in_progress_scroll)
+
+
+  local researched_tab =
+      tabs.add({
+        type = "tab",
+        name = "journey_researched_tab",
+        caption = "Researched"
+      })
+
+  local researched_scroll =
+      tabs.add({
+        type = "scroll-pane",
+        name = "journey_researched"
+      })
+
+  researched_scroll.style.maximal_height = 500
+  researched_scroll.style.width = 430
+  tabs.add_tab(researched_tab, researched_scroll)
+
+
+  local summary_tab =
+      tabs.add({
+        type = "tab",
+        name = "journey_summary_tab",
+        caption = "Summary"
+      })
+
+  local summary_scroll =
+      tabs.add({
+        type = "scroll-pane",
+        name = "journey_summary"
+      })
+
+  summary_scroll.style.maximal_height = 500
+  summary_scroll.style.width = 430
+  tabs.add_tab(summary_tab, summary_scroll)
 
 
   window.add({
