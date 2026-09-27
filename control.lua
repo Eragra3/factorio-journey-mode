@@ -75,11 +75,7 @@ commands.add_command(
 
           unlocked_count = unlocked_count + 1
 
-          game.print(
-            "[Journey] "
-            .. item
-            .. " unlocked"
-          )
+          Research.print_unlocked(item)
         end
       end
     end

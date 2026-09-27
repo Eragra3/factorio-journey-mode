@@ -2,6 +2,28 @@ local Research = {}
 
 local BASE_REQUIREMENT = 10000
 
+function Research.print_unlocked(item)
+  local icon = ""
+
+  local found_icon, icon_tag = pcall(function()
+    if prototypes.item[item] then
+      return "[img=item/" .. item .. "] "
+    end
+  end)
+
+  if found_icon and icon_tag then
+    icon = icon_tag
+  end
+
+
+  game.print(
+    "[Journey] "
+    .. icon
+    .. item
+    .. " unlocked"
+  )
+end
+
 function Research.get_required_count(item_name)
   local cost_data =
       prototypes.mod_data["journey-cost-data"]
@@ -101,11 +123,7 @@ function Research.add_progress(force, item, amount)
   if data.progress[item] >= required then
     Research.unlock_item(force, item)
 
-    game.print(
-      "[Journey] "
-      .. item
-      .. " unlocked"
-    )
+    Research.print_unlocked(item)
   end
 end
 
