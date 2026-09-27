@@ -140,6 +140,9 @@ script.on_event(
 )
 
 
+local refresh_open_journey_guis
+
+
 script.on_nth_tick(
   60,
   function()
@@ -179,6 +182,9 @@ script.on_nth_tick(
         end
       end
     end
+
+
+    refresh_open_journey_guis()
   end
 )
 
@@ -205,6 +211,190 @@ script.on_event(
     )
   end
 )
+
+
+local function get_journey_item_caption(item)
+  local found_prototype, caption = pcall(function()
+    local prototype = prototypes.item[item]
+
+    return prototype and prototype.localised_name
+  end)
+
+  if found_prototype and caption then
+    return caption
+  end
+
+  return item
+end
+
+
+local function update_journey_item_row(row, item, progress)
+  local required =
+      Research.get_required_count(item)
+
+  local displayed_progress =
+      math.max(0, math.min(progress, required))
+
+  local details = row.journey_item_details
+  local progress_row = details.journey_progress_row
+
+  details.journey_item_name.caption =
+      get_journey_item_caption(item)
+
+  progress_row.journey_progress_bar.value =
+      displayed_progress / required
+
+  progress_row.journey_progress_count.caption =
+      displayed_progress .. " / " .. required
+end
+
+
+local function add_journey_item_row(scroll, item, progress)
+  local row =
+      scroll.add({
+        type = "flow",
+        name = "journey_item_row_" .. item,
+        direction = "horizontal"
+      })
+
+  row.style.horizontal_spacing = 8
+  row.style.bottom_padding = 6
+
+
+  local icon_added = pcall(function()
+    row.add({
+      type = "sprite",
+      name = "journey_item_icon",
+      sprite = "item/" .. item,
+      tooltip = item
+    })
+  end)
+
+
+  if not icon_added then
+    row.add({
+      type = "label",
+      caption = "?",
+      tooltip = "No icon available for " .. item
+    })
+  end
+
+
+  local details =
+      row.add({
+        type = "flow",
+        name = "journey_item_details",
+        direction = "vertical"
+      })
+
+  details.style.horizontally_stretchable = true
+  details.style.vertical_spacing = 4
+
+
+  details.add({
+    type = "label",
+    name = "journey_item_name"
+  })
+
+
+  local progress_row =
+      details.add({
+        type = "flow",
+        name = "journey_progress_row",
+        direction = "horizontal"
+      })
+
+  progress_row.style.horizontal_spacing = 8
+
+
+  local progress_bar =
+      progress_row.add({
+        type = "progressbar",
+        name = "journey_progress_bar"
+      })
+
+  progress_bar.style.width = 250
+
+
+  progress_row.add({
+    type = "label",
+    name = "journey_progress_count"
+  })
+
+
+  update_journey_item_row(row, item, progress)
+end
+
+
+local function update_journey_gui(player)
+  local window = player.gui.screen.journey_window
+
+  if not window then
+    return
+  end
+
+
+  local scroll = window.journey_list
+  local data =
+      Research.get_force_data(player.force)
+
+  local items = {}
+
+  for item in pairs(data.progress) do
+    table.insert(items, item)
+  end
+
+  table.sort(items)
+
+
+  local rebuild =
+      #items == 0 and not scroll.journey_empty_message
+
+  for _, item in ipairs(items) do
+    if not scroll["journey_item_row_" .. item] then
+      rebuild = true
+      break
+    end
+  end
+
+
+  if rebuild then
+    scroll.clear()
+
+    if #items == 0 then
+      scroll.add({
+        type = "label",
+        name = "journey_empty_message",
+        caption = "No item progress yet."
+      })
+    else
+      for _, item in ipairs(items) do
+        add_journey_item_row(
+          scroll,
+          item,
+          data.progress[item]
+        )
+      end
+    end
+  else
+    for _, item in ipairs(items) do
+      update_journey_item_row(
+        scroll["journey_item_row_" .. item],
+        item,
+        data.progress[item]
+      )
+    end
+  end
+end
+
+
+refresh_open_journey_guis = function()
+  for _, player in pairs(game.connected_players) do
+    if player.gui.screen.journey_window then
+      update_journey_gui(player)
+    end
+  end
+end
 
 
 local function open_journey_gui(player)
@@ -244,114 +434,14 @@ local function open_journey_gui(player)
   scroll.style.width = 430
 
 
-  local data =
-      Research.get_force_data(player.force)
-
-
-  local items = {}
-
-  for item in pairs(data.progress) do
-    table.insert(items, item)
-  end
-
-  table.sort(items)
-
-
-  if #items == 0 then
-    scroll.add({
-      type = "label",
-      caption = "No item progress yet."
-    })
-  end
-
-
-  for _, item in ipairs(items) do
-    local progress = data.progress[item]
-    local required =
-        Research.get_required_count(item)
-    local item_prototype = prototypes.item[item]
-    local item_caption =
-        item_prototype and item_prototype.localised_name or item
-
-
-    local displayed_progress =
-        math.max(0, math.min(progress, required))
-
-    local row =
-        scroll.add({
-          type = "flow",
-          direction = "horizontal"
-        })
-
-    row.style.horizontal_spacing = 8
-    row.style.bottom_padding = 6
-
-
-    local icon_added = pcall(function()
-      row.add({
-        type = "sprite",
-        name = "journey_item_icon",
-        sprite = "item/" .. item,
-        tooltip = item
-      })
-    end)
-
-
-    if not icon_added then
-      row.add({
-        type = "label",
-        caption = "?",
-        tooltip = "No icon available for " .. item
-      })
-    end
-
-
-    local details =
-        row.add({
-          type = "flow",
-          direction = "vertical"
-        })
-
-    details.style.horizontally_stretchable = true
-    details.style.vertical_spacing = 4
-
-
-    details.add({
-      type = "label",
-      caption = item_caption
-    })
-
-
-    local progress_row =
-        details.add({
-          type = "flow",
-          direction = "horizontal"
-        })
-
-    progress_row.style.horizontal_spacing = 8
-
-
-    local progress_bar =
-        progress_row.add({
-          type = "progressbar",
-          value = displayed_progress / required
-        })
-
-    progress_bar.style.width = 250
-
-
-    progress_row.add({
-      type = "label",
-      caption = displayed_progress .. " / " .. required
-    })
-  end
-
-
   window.add({
     type = "button",
     name = "journey_close",
     caption = "Close"
   })
+
+
+  update_journey_gui(player)
 end
 
 
