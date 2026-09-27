@@ -146,6 +146,9 @@ for _, name in pairs(recipe_names) do
 
   free_recipe.ingredients = {}
   free_recipe.enabled = false
+  free_recipe.allow_as_intermediate = true
+  free_recipe.allow_intermediates = true
+  free_recipe.order = "0[free]-" .. (recipe.order or name)
   free_recipe.localised_name =
       { "", "Free ", free_recipe.localised_name or name }
 
