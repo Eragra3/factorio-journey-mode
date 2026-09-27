@@ -228,28 +228,42 @@ local function get_journey_item_caption(item)
 end
 
 
-local function update_journey_item_row(row, item, progress)
+local function update_journey_item_row(row, force, item, progress)
   local required =
       Research.get_required_count(item)
 
   local displayed_progress =
       math.max(0, math.min(progress, required))
+  local researched =
+      Research.is_unlocked(force, item)
 
   local details = row.journey_item_details
   local progress_row = details.journey_progress_row
+  local progress_bar = progress_row.journey_progress_bar
 
   details.journey_item_name.caption =
       get_journey_item_caption(item)
 
-  progress_row.journey_progress_bar.value =
-      displayed_progress / required
+  details.journey_item_status.caption =
+      researched and "Researched" or ""
+
+  progress_bar.value = displayed_progress / required
+  progress_bar.style.color = researched and {
+    r = 0.25,
+    g = 0.8,
+    b = 0.35
+  } or {
+    r = 0.25,
+    g = 0.6,
+    b = 0.9
+  }
 
   progress_row.journey_progress_count.caption =
       displayed_progress .. " / " .. required
 end
 
 
-local function add_journey_item_row(scroll, item, progress)
+local function add_journey_item_row(scroll, force, item, progress)
   local row =
       scroll.add({
         type = "flow",
@@ -291,10 +305,28 @@ local function add_journey_item_row(scroll, item, progress)
   details.style.vertical_spacing = 4
 
 
-  details.add({
+  local title_row =
+      details.add({
+        type = "flow",
+        direction = "horizontal"
+      })
+
+  title_row.add({
     type = "label",
     name = "journey_item_name"
   })
+
+  local status =
+      title_row.add({
+        type = "label",
+        name = "journey_item_status"
+      })
+
+  status.style.font_color = {
+    r = 0.25,
+    g = 0.8,
+    b = 0.35
+  }
 
 
   local progress_row =
@@ -322,7 +354,7 @@ local function add_journey_item_row(scroll, item, progress)
   })
 
 
-  update_journey_item_row(row, item, progress)
+  update_journey_item_row(row, force, item, progress)
 end
 
 
@@ -371,6 +403,7 @@ local function update_journey_gui(player)
       for _, item in ipairs(items) do
         add_journey_item_row(
           scroll,
+          player.force,
           item,
           data.progress[item]
         )
@@ -380,6 +413,7 @@ local function update_journey_gui(player)
     for _, item in ipairs(items) do
       update_journey_item_row(
         scroll["journey_item_row_" .. item],
+        player.force,
         item,
         data.progress[item]
       )
