@@ -3,7 +3,7 @@ local Research = require("lib.research")
 
 commands.add_command(
   "journey_research",
-  "Add research progress",
+  "Add research progress. Parameters: <item-or-fluid> <integer-amount>",
   function(command)
     local player =
         game.get_player(command.player_index)
@@ -23,7 +23,7 @@ commands.add_command(
 
     if not item or not amount then
       player.print(
-        "Usage: /journey_research item amount"
+        "Usage: /journey_research <item-or-fluid> <integer-amount>"
       )
       return
     end
@@ -48,7 +48,7 @@ commands.add_command(
 
 commands.add_command(
   "journey_difficulty",
-  "Set Journey research difficulty",
+  "Show current difficulty or set it with [Fast|Regular|Chore|Endgame]",
   function(command)
     local player =
         game.get_player(command.player_index)
@@ -71,7 +71,7 @@ commands.add_command(
         .. difficulty
         .. " (x"
         .. multiplier
-        .. "). Usage: /journey_difficulty Fast|Regular|Chore|Endgame"
+        .. "). Usage: /journey_difficulty [Fast|Regular|Chore|Endgame]"
       )
 
       return
@@ -83,7 +83,7 @@ commands.add_command(
 
     if not changed then
       player.print(
-        "Usage: /journey_difficulty Fast|Regular|Chore|Endgame"
+        "Usage: /journey_difficulty [Fast|Regular|Chore|Endgame]"
       )
 
       return
@@ -116,7 +116,7 @@ commands.add_command(
 
 commands.add_command(
   "journey_recheck",
-  "Re-check research progress and unlock anything past threshold",
+  "Re-check stored progress and unlock completed items. No parameters.",
   function(command)
     local player =
         game.get_player(command.player_index)
@@ -540,6 +540,78 @@ local function update_journey_item_row(row, force, item, progress, researched)
 
   progress_row.journey_progress_count.caption =
       displayed_count .. " / " .. required
+
+
+  local estimate_ok, estimate_caption = pcall(function()
+    if researched then
+      return ""
+    end
+
+
+    local estimated_ticks =
+        Research.get_estimated_ticks(force, item)
+
+    if not estimated_ticks then
+      return "ETA: measuring..."
+    end
+
+
+    local estimated_seconds = math.ceil(estimated_ticks / 60)
+    local days = math.floor(estimated_seconds / 86400)
+    local hours = math.floor(estimated_seconds % 86400 / 3600)
+    local minutes = math.floor(estimated_seconds % 3600 / 60)
+    local seconds = estimated_seconds % 60
+    local estimate
+
+    if days > 0 then
+      estimate = days .. "d " .. hours .. "h"
+    elseif hours > 0 then
+      estimate = hours .. "h " .. minutes .. "m"
+    elseif minutes > 0 then
+      estimate = minutes .. "m " .. seconds .. "s"
+    else
+      estimate = seconds .. "s"
+    end
+
+    return "ETA: ~" .. estimate
+  end)
+
+  local estimated_time = details.journey_estimated_time
+
+  if not estimated_time then
+    local label_added, label = pcall(function()
+      return details.add({
+        type = "label",
+        name = "journey_estimated_time",
+        caption = "ETA: ?",
+        tooltip = "Estimated from the average progress rate observed since tracking began."
+      })
+    end)
+
+    if label_added then
+      estimated_time = label
+      pcall(function()
+        estimated_time.style.font_color = {
+          r = 0.7,
+          g = 0.7,
+          b = 0.7
+        }
+      end)
+    end
+  end
+
+  if estimated_time then
+    local caption = estimate_ok and estimate_caption or "ETA: ?"
+    local caption_updated = pcall(function()
+      estimated_time.caption = caption
+    end)
+
+    if not caption_updated then
+      pcall(function()
+        estimated_time.caption = "ETA: ?"
+      end)
+    end
+  end
 end
 
 
@@ -644,6 +716,21 @@ local function add_journey_item_row(scroll, force, item, progress, researched)
   })
 
 
+  local estimated_time =
+      details.add({
+        type = "label",
+        name = "journey_estimated_time",
+        caption = "ETA: measuring...",
+        tooltip = "Estimated from the average progress rate observed since tracking began."
+      })
+
+  estimated_time.style.font_color = {
+    r = 0.7,
+    g = 0.7,
+    b = 0.7
+  }
+
+
   update_journey_item_row(row, force, item, progress, researched)
 end
 
@@ -734,7 +821,12 @@ local function update_journey_category_scroll(
 
 
     for _, item in ipairs(group.items) do
-      if not category[get_journey_row_name(item, researched)] then
+      local row = category[get_journey_row_name(item, researched)]
+
+      if not row
+          or not row.journey_item_details
+          or not row.journey_item_details.journey_estimated_time
+      then
         rebuild = true
         break
       end

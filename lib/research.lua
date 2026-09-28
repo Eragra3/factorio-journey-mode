@@ -141,6 +141,39 @@ function Research.get_required_count(item_name, force)
   )
 end
 
+
+function Research.get_estimated_ticks(force, item_name)
+  local force_data = Research.get_force_data(force)
+  local progress = force_data.progress[item_name] or 0
+  local required = Research.get_required_count(item_name, force)
+
+  force_data.estimate_tracking =
+      force_data.estimate_tracking or {}
+
+  local tracking = force_data.estimate_tracking[item_name]
+
+  if not tracking then
+    force_data.estimate_tracking[item_name] = {
+      progress = progress,
+      tick = game.tick
+    }
+
+    return nil
+  end
+
+
+  local progress_gained = progress - tracking.progress
+  local ticks_elapsed = game.tick - tracking.tick
+  local remaining = required - progress
+
+  if progress_gained <= 0 or ticks_elapsed <= 0 or remaining <= 0 then
+    return nil
+  end
+
+
+  return remaining * ticks_elapsed / progress_gained
+end
+
 function Research.unlock_item(force, item)
   for name, recipe in pairs(force.recipes) do
     if not recipe.enabled
