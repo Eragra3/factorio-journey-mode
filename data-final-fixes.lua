@@ -18,13 +18,61 @@ for _, furnace in pairs(data.raw.furnace or {}) do
 end
 
 
+local function uses_furnace_category(recipe)
+  if recipe.category and furnace_categories[recipe.category] then
+    return true
+  end
+
+  for _, category in pairs(recipe.categories or {}) do
+    if furnace_categories[category] then
+      return true
+    end
+  end
+
+  return false
+end
+
+
 for name, recipe in pairs(data.raw.recipe) do
   if string.sub(name, 1, 13) == "journey-free-"
-      and furnace_categories[recipe.category]
+      and uses_furnace_category(recipe)
   then
     -- Furnaces select recipes from their ingredients. The free clone has no
     -- ingredients, so leave the original recipe available for normal smelting.
-    recipe.category = "crafting"
+    if recipe.categories then
+      local categories = {}
+
+      for _, category in pairs(recipe.categories) do
+        if not furnace_categories[category] then
+          table.insert(categories, category)
+        end
+      end
+
+      if #categories == 0 then
+        recipe.categories = nil
+        recipe.category = "crafting"
+      else
+        recipe.categories = categories
+        recipe.category = nil
+      end
+    else
+      recipe.category = "crafting"
+    end
+  end
+end
+
+
+for name, free_recipe in pairs(data.raw.recipe) do
+  if string.sub(name, 1, 13) == "journey-free-" then
+    local original_name = string.sub(name, 14)
+    local original_recipe = data.raw.recipe[original_name]
+
+    if original_recipe and not uses_furnace_category(original_recipe) then
+      local base_order = original_recipe.order or original_name
+
+      free_recipe.order = base_order .. "-0[free]"
+      original_recipe.order = base_order .. "-1[original]"
+    end
   end
 end
 
