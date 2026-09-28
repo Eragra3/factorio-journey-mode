@@ -634,8 +634,8 @@ local function calculate_crafting_time(item_name)
   local recipe = chosen_recipes[item_name]
 
   if not recipe then
-    crafting_time_cache[item_name] = 0
-    return 0
+    crafting_time_cache[item_name] = 1
+    return 1
   end
 
 
@@ -677,10 +677,10 @@ local function calculate_item_cost(item_name)
   if not recipe then
     return {
       value = material_value,
-      complexity = 1,
+      work_per_item = 1,
       raw = raw,
       ingredient_amount = get_raw_amount(raw),
-      crafting_time = 0,
+      crafting_time = 1,
       structure_cost = 0
     }
   end
@@ -693,22 +693,19 @@ local function calculate_item_cost(item_name)
   local structure_cost =
       calculate_structure_cost(item_name)
 
-  local score =
-      material_value
-      + ingredient_amount * 0.05
-      + crafting_time * 0.25
-      + structure_cost * 0.1
-
-  local complexity =
+  local work_per_item =
       math.max(
-        1,
-        math.log(1 + score) / math.log(2)
+        0.1,
+        crafting_time
+        + material_value * 0.01
+        + ingredient_amount * 0.01
+        + structure_cost * 0.005
       )
 
 
   return {
     value = material_value,
-    complexity = complexity,
+    work_per_item = work_per_item,
     raw = raw,
     ingredient_amount = ingredient_amount,
     crafting_time = crafting_time,

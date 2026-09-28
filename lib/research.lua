@@ -121,8 +121,8 @@ function Research.get_required_count(item_name, force)
       and FLUID_REQUIREMENT
       or BASE_REQUIREMENT
 
-  local complexity =
-      item and item.complexity or 1
+  local work_per_item =
+      item and item.work_per_item or 1
 
   local difficulty_multiplier = 1
 
@@ -135,7 +135,7 @@ function Research.get_required_count(item_name, force)
     1,
     math.floor(
       base_requirement
-      * complexity
+      / work_per_item
       * difficulty_multiplier
     )
   )
