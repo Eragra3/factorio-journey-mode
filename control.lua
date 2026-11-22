@@ -48,7 +48,7 @@ commands.add_command(
 
 commands.add_command(
   "journey_difficulty",
-  "Show current difficulty or set it with [Fast|Regular|Chore|Endgame]",
+  "Show current difficulty or set it with [Fast|Regular|Chore|Endgame|100]",
   function(command)
     local player =
         game.get_player(command.player_index)
@@ -63,27 +63,31 @@ commands.add_command(
         and command.parameter:match("^%s*(%S+)")
 
     if not requested then
-      local difficulty, multiplier =
+      local difficulty, multiplier, fixed_requirement =
           Research.get_difficulty(player.force)
+
+      local setting_description =
+          fixed_requirement
+          and (" (" .. fixed_requirement .. " per item/fluid)")
+          or (" (x" .. multiplier .. ")")
 
       player.print(
         "Journey difficulty: "
         .. difficulty
-        .. " (x"
-        .. multiplier
-        .. "). Usage: /journey_difficulty [Fast|Regular|Chore|Endgame]"
+        .. setting_description
+        .. ". Usage: /journey_difficulty [Fast|Regular|Chore|Endgame|100]"
       )
 
       return
     end
 
 
-    local changed, difficulty, multiplier =
+    local changed, difficulty, multiplier, fixed_requirement =
         Research.set_difficulty(player.force, requested)
 
     if not changed then
       player.print(
-        "Usage: /journey_difficulty [Fast|Regular|Chore|Endgame]"
+        "Usage: /journey_difficulty [Fast|Regular|Chore|Endgame|100]"
       )
 
       return
@@ -103,12 +107,16 @@ commands.add_command(
     end
 
 
+    local setting_description =
+        fixed_requirement
+        and (" (" .. fixed_requirement .. " per item/fluid)")
+        or (" (x" .. multiplier .. ")")
+
     player.print(
       "Journey difficulty set to "
       .. difficulty
-      .. " (x"
-      .. multiplier
-      .. ")."
+      .. setting_description
+      .. "."
     )
   end
 )
@@ -264,19 +272,27 @@ script.on_nth_tick(
             inventory.get_contents()
           ) do
             if not Research.is_unlocked(chest.force, item.name) then
-              local removed =
-                  inventory.remove({
-                    name = item.name,
-                    count = item.count
-                  })
+              local needed =
+                  Research.get_remaining_count(item.name, chest.force)
+
+              local to_remove =
+                  math.min(item.count, needed)
+
+              if to_remove > 0 then
+                local removed =
+                    inventory.remove({
+                      name = item.name,
+                      count = to_remove
+                    })
 
 
-              if removed > 0 then
-                Research.add_progress(
-                  chest.force,
-                  item.name,
-                  removed
-                )
+                if removed > 0 then
+                  Research.add_progress(
+                    chest.force,
+                    item.name,
+                    removed
+                  )
+                end
               end
             end
           end
@@ -298,18 +314,26 @@ script.on_nth_tick(
             and Research.has_recipe(tank.force, fluid.name)
             and not Research.is_unlocked(tank.force, fluid.name)
         then
-          local removed =
-              tank.remove_fluid({
-                name = fluid.name,
-                amount = fluid.amount
-              })
+          local needed =
+              Research.get_remaining_count(fluid.name, tank.force)
 
-          if removed > 0 then
-            Research.add_progress(
-              tank.force,
-              fluid.name,
-              removed
-            )
+          local to_remove =
+              math.min(fluid.amount, needed)
+
+          if to_remove > 0 then
+            local removed =
+                tank.remove_fluid({
+                  name = fluid.name,
+                  amount = to_remove
+                })
+
+            if removed > 0 then
+              Research.add_progress(
+                tank.force,
+                fluid.name,
+                removed
+              )
+            end
           end
         end
       end

@@ -8,6 +8,9 @@ local DIFFICULTY_MULTIPLIERS = {
   Chore = 3,
   Endgame = 10
 }
+local FIXED_REQUIREMENTS = {
+  ["100"] = 100
+}
 
 function Research.print_unlocked(item)
   local icon = ""
@@ -90,7 +93,9 @@ function Research.get_difficulty(force)
   local difficulty =
       Research.get_force_data(force).difficulty
 
-  return difficulty, DIFFICULTY_MULTIPLIERS[difficulty] or 1
+  return difficulty,
+      DIFFICULTY_MULTIPLIERS[difficulty] or 1,
+      FIXED_REQUIREMENTS[difficulty]
 end
 
 
@@ -105,11 +110,29 @@ function Research.set_difficulty(force, requested_difficulty)
     end
   end
 
+
+  for difficulty, requirement in pairs(FIXED_REQUIREMENTS) do
+    if string.lower(difficulty) == requested then
+      Research.get_force_data(force).difficulty = difficulty
+      return true, difficulty, 1, requirement
+    end
+  end
+
   return false
 end
 
 
 function Research.get_required_count(item_name, force)
+  if force then
+    local difficulty = Research.get_difficulty(force)
+    local fixed_requirement = FIXED_REQUIREMENTS[difficulty]
+
+    if fixed_requirement then
+      return fixed_requirement
+    end
+  end
+
+
   local cost_data =
       prototypes.mod_data["journey-cost-data"]
 
@@ -138,6 +161,17 @@ function Research.get_required_count(item_name, force)
       / work_per_item
       * difficulty_multiplier
     )
+  )
+end
+
+
+function Research.get_remaining_count(item_name, force)
+  local progress =
+      Research.get_force_data(force).progress[item_name] or 0
+
+  return math.max(
+    0,
+    Research.get_required_count(item_name, force) - progress
   )
 end
 
